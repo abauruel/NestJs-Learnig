@@ -1,30 +1,46 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { AppError } from 'src/errors/AppError';
 import { EntityNotFound } from 'src/errors/entityNotFound';
+import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from './entities/user.entity';
 
 @Injectable()
 export class UsersService {
-  private users: User[] = [];
+  constructor(private readonly prisma: PrismaService) {}
 
-  create(createUserDto: CreateUserDto) {
-    const id =
-      this.users.length == 0 ? 1 : this.users[this.users.length - 1].id + 1;
-    const user: User = {
+  async create(createUserDto: CreateUserDto): Promise<User> {
+    const data: Prisma.UserCreateInput = {
       ...createUserDto,
-      id,
     };
-    this.users.push(user);
-    return user;
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        name: data.name,
+      },
+    });
+
+    if (user) {
+      throw new AppError('name or email already exists');
+    }
+
+    return await this.prisma.user.create({
+      data,
+    });
   }
 
-  findAll() {
-    return this.users;
+  async findAll() {
+    return await this.prisma.user.findMany();
   }
 
-  findOne(id: number) {
-    const user = this.users.find((user) => user.id == id);
+  async findOne(id: number) {
+    const user = this.prisma.user.findUnique({
+      where: {
+        id,
+      },
+    });
     if (!user) {
       throw new EntityNotFound();
     }
@@ -32,22 +48,32 @@ export class UsersService {
     return user;
   }
 
-  update(id: number, updateUserDto: UpdateUserDto) {
-    const user = this.findOne(id);
-    const newUser: User = {
-      ...user,
+  async update(id: number, updateUserDto: UpdateUserDto): Promise<User> {
+    const user = this.prisma.user.findUnique({
+      where: {
+        id,
+      },
+    });
+
+    if (!user) {
+      throw new EntityNotFound();
+    }
+
+    const data: Prisma.UserUpdateInput = {
       ...updateUserDto,
     };
 
-    const index = this.users.indexOf(user);
-    this.users[index] = newUser;
-
-    return this.users[index];
+    return this.prisma.user.update({
+      data,
+      where: {
+        id,
+      },
+    });
   }
 
-  remove(id: number) {
-    const user = this.findOne(id);
-    const index = this.users.indexOf(user);
-    this.users.splice(index, 1);
+  async remove(id: number) {
+    await this.findOne(id);
+
+    await this.prisma.user.delete({ where: { id } });
   }
 }
